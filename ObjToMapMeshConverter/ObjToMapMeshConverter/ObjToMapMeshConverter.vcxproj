@@ -23,7 +23,7 @@
     <ProjectGuid>{5445E87D-14B4-42CC-A9E1-93F47C79DF30}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>ObjToMapMeshConverter</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
