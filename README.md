@@ -9,7 +9,7 @@ OBJTOCODMAP is licensed under the GPL license and it and its source code is free
 
 
 # Releases
-
+https://github.com/AFirstTimeMapMaker/ObjToCODMap/releases
 
 # How To Build
 Need Visual Studio 2017
