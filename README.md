@@ -8,6 +8,9 @@ Open up exe, and put OBJ file on exe to convert to .MAP.
 OBJTOCODMAP is licensed under the GPL license and it and its source code is free to use and modify under the terms of the GPL. ObjtoCODMap comes with NO warranty, any damages caused are solely the responsibility of the user.
 
 
+# Releases
+
+
 # How To Build
 Need Visual Studio 2017
 and Windows SDK
