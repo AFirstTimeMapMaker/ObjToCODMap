@@ -18,5 +18,6 @@ and Windows SDK
 
 # Credits
 Programer: Aroosh Bhakhri (IGhost692) 
+Secondary programmer: AfirstTimeMapMaker
 
 If you use this program or any part of the code, please give credit to AFirstTimeMapMaker and Aroosh. 
