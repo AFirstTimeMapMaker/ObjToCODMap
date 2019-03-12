@@ -4,7 +4,10 @@
 #include "stdafx.h"
 #include <conio.h>
 
+
 using namespace std;
+
+int numinput = 0;
 
 struct TVector2
 {
@@ -135,53 +138,101 @@ void writeFileOut(int start, int end, tGeometry geometry, std::string input, int
 		outFile << "{\n\n";
 		outFile << "\"classname\" \"worldspawn\"\n";
 
-		int index = 0;
-		//writing out verts
-		for (int i = start; i < end; i += 3)
+		if (numinput == 1) // divide by 2.54
 		{
-			outFile << "// brush " << index++ << "\n";
-			outFile << "{\n";
-			outFile << "mesh\n";
-			outFile << "{\n";
-			outFile << "caulk\n";
-			outFile << "lightmap_gray\n";
-			outFile << "2 2 16 8\n";
-			outFile << "(\n";
-			outFile << "v " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y << " t 0 0 0 0\n";
-			outFile << "v " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y << " t 0 0 0 0\n";
-			outFile << ")\n";
-			outFile << "(\n";
-			outFile << "v " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.y << " t 0 0 0 0\n";
-			outFile << "v " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.y << " t 0 0 0 0\n";
-			outFile << ")\n";
+			int index = 0;
+			//writing out verts
+			for (int i = start; i < end; i += 3)
+			{
+				outFile << "// brush " << index++ << "\n";
+				outFile << "{\n";
+				outFile << "mesh\n";
+				outFile << "{\n";
+				outFile << "caulk\n";
+				outFile << "lightmap_gray\n";
+				outFile << "2 2 16 8\n";
+				outFile << "(\n";
+				outFile << "v " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y) / 2.54 << " t 0 0 0 0\n";
+				outFile << "v " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y) / 2.54 << " t 0 0 0 0\n";
+				outFile << ")\n";
+				outFile << "(\n";
+				outFile << "v " << (geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.x) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.z) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.y) / 2.54 << " t 0 0 0 0\n";
+				outFile << "v " << (geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.x) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.z) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.y) / 2.54 << " t 0 0 0 0\n";
+				outFile << ")\n";
+				outFile << "}\n";
+				outFile << "}\n";
+			}
+
 			outFile << "}\n";
-			outFile << "}\n";
+
 		}
 
-		outFile << "}\n";
+	   if (numinput == 2) // keep original formal
+		{
+			int index = 0;
+			//writing out verts
+			for (int i = start; i < end; i += 3)
+			{
+				outFile << "// brush " << index++ << "\n";
+				outFile << "{\n";
+				outFile << "mesh\n";
+				outFile << "{\n";
+				outFile << "caulk\n";
+				outFile << "lightmap_gray\n";
+				outFile << "2 2 16 8\n";
+				outFile << "(\n";
+				outFile << "v " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y << " t 0 0 0 0\n";
+				outFile << "v " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y << " t 0 0 0 0\n";
+				outFile << ")\n";
+				outFile << "(\n";
+				outFile << "v " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.y << " t 0 0 0 0\n";
+				outFile << "v " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.y << " t 0 0 0 0\n";
+				outFile << ")\n";
+				outFile << "}\n";
+				outFile << "}\n";
+			}
 
+			outFile << "}\n";
+
+		}
+		
+		outFile.close();
 	}
-
-
-	outFile.close();
 }
 
+
+
 int main()
+
 {
+	std::cout << "OBJ TO COD MAP 1.02. 03/11/2019 release \n";
+	std::cout << "Press 1 to convert a Scobalula HUSKY Map Obj (divide 2.54, cm to COD units) or press 2 to convert w/o division. \n";
+	cin >> numinput;
+	
+	//error handling
+	while (numinput < 1 || numinput > 2) {
+		cin.clear();
+		cin.ignore(999, '\n');
+		cout << "Invalid! Please enter '1 or 2' \n";
+		cin >> numinput;
+	}
+	
+	cin.ignore();
 	std::cout << "Drag the obj file you want to convert and press enter.\n";
 
-	std::string input;
-
-	std::getline(std::cin, input);
+	std::string fileinput;
+			
+	std::getline(std::cin, fileinput);
 
 	//input.erase(input.begin());
 	//input.erase(input.begin() + input.size() - 1);
 
 	//Reading in
 	cout << "Working.....This will take a few minutes" << endl;
+	
 	std::ifstream objFile;
 
-	objFile.open(input.data());
+	objFile.open(fileinput.data());
 
 	tGeometry geometry;
 
@@ -248,7 +299,6 @@ int main()
 
 					/*unsigned int s1Index = 0;
 					unsigned int s2Index = 0;
-
 					for (unsigned int i = 0; i < line.size(); i++)
 					{
 					if (line[i] == ' ' && s1Index == 0)
@@ -259,32 +309,25 @@ int main()
 					break;
 					}
 					}
-
 					std::string face1;
 					std::string face2;
 					std::string face3;
-
 					for (unsigned int i = 0; i < s1Index; i++)
 					{
 					face1.push_back(line[i]);
 					}
-
 					for (unsigned int i = s1Index; i < s2Index; i++)
 					{
 					face2.push_back(line[i]);
 					}
-
 					for (unsigned int i = s2Index; i < line.size(); i++)
 					{
 					face3.push_back(line[i]);
 					}
-
 					std::string value1;
 					std::string value2;
 					std::string value3;
-
 					s1Index = 0;
-
 					for (unsigned int i = 0; i < face1.size(); i++)
 					{
 					if (face1[i] == '/' && s1Index == 0)
@@ -295,39 +338,28 @@ int main()
 					break;
 					}
 					}
-
 					for (unsigned int i = 0; i < s1Index; i++)
 					{
 					value1.push_back(face1[i]);
 					}
-
 					for (unsigned int i = s1Index + 1; i < s2Index; i++)
 					{
 					value2.push_back(face1[i]);
 					}
-
 					for (unsigned int i = s2Index + 1; i < face1.size(); i++)
 					{
 					value3.push_back(face1[i]);
 					}
-
-
 					float v1 = std::stof(value1.c_str());
 					float v2 = std::stof(value2.c_str());
 					float v3 = std::stof(value3.c_str());
-
 					TMY_TRIANGLE pushThis;
 					pushThis.indices = { v1, v2, v3 };
-
-
 					triangles.push_back(pushThis);
-
 					std::string value11;
 					std::string value12;
 					std::string value13;
-
 					s1Index = 0;
-
 					for (unsigned int i = 0; i < face2.size(); i++)
 					{
 					if (face2[i] == '/' && s1Index == 0)
@@ -338,37 +370,28 @@ int main()
 					break;
 					}
 					}
-
 					for (unsigned int i = 0; i < s1Index; i++)
 					{
 					value11.push_back(face2[i]);
 					}
-
 					for (unsigned int i = s1Index + 1; i < s2Index; i++)
 					{
 					value12.push_back(face2[i]);
 					}
-
 					for (unsigned int i = s2Index + 1; i < face2.size(); i++)
 					{
 					value13.push_back(face2[i]);
 					}
-
 					float v11 = std::stof(value11.c_str());
 					float v12 = std::stof(value12.c_str());
 					float v13 = std::stof(value13.c_str());
-
 					TMY_TRIANGLE pushThis1;
 					pushThis1.indices = { v11, v12, v13 };
-
 					triangles.push_back(pushThis1);
-
 					std::string value21;
 					std::string value22;
 					std::string value23;
-
 					s1Index = 0;
-
 					for (unsigned int i = 0; i < face3.size(); i++)
 					{
 					if (face3[i] == '/' && s1Index == 0)
@@ -379,30 +402,23 @@ int main()
 					break;
 					}
 					}
-
 					for (unsigned int i = 0; i < s1Index; i++)
 					{
 					value21.push_back(face3[i]);
 					}
-
 					for (unsigned int i = s1Index + 1; i < s2Index; i++)
 					{
 					value22.push_back(face3[i]);
 					}
-
 					for (unsigned int i = s2Index + 1; i < face3.size(); i++)
 					{
 					value23.push_back(face3[i]);
 					}
-
 					float v21 = std::stof(value21.c_str());
 					float v22 = std::stof(value22.c_str());
 					float v23 = std::stof(value23.c_str());
-
 					TMY_TRIANGLE pushThis2;
 					pushThis2.indices = { v21, v22, v23 };
-
-
 					triangles.push_back(pushThis2);*/
 
 					TMY_TRIANGLE read1, read2, read3;
@@ -488,37 +504,36 @@ int main()
 	HWND hwnd = GetConsoleWindow();
 
 
-	int del = input.find_last_of("\\");
+	int del = fileinput.find_last_of("\\");
 
 	for (int i = 0; i < del + 1; i++)
 	{
-		input.erase(input.begin());
+		fileinput.erase(fileinput.begin());
 	}
 
 	for (int i = 0; i < 4; i++)
 	{
-		input.erase(input.end() - 1);
+		fileinput.erase(fileinput.end() - 1);
 	}
-		
+
 	//Writing out
 	CreateDirectory(L"data", NULL);
-	
-	//150003
+
+	//350003
 	int num = 0;
 	//////////////////////////////////////////////////////////////////////////////////
-	for (int i = 0, max = 150003; i < geometry.m_indices.size(); i+= 150003, max += 150003)
+	for (int i = 0, max = 350003; i < geometry.m_indices.size(); i += 350003, max += 350003)
 	{
 		if (max > geometry.m_indices.size())
 		{
 			max = geometry.m_indices.size();
 		}
-		writeFileOut(i, max, geometry, input, num);
+		writeFileOut(i, max, geometry, fileinput, num);
 		num++;
 	}
-	
-	cout << "Map has finished exporting, map is in the DATA folder! Press any key to close!"<< endl;
+
+	cout << "Map has finished exporting, map is in the DATA folder! Press any key to close!" << endl;
 	_getch();
 
 	return 0;
 }
-
