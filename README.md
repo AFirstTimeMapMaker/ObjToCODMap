@@ -1,6 +1,9 @@
 # ObjToCODMap
 A program that is designed to convert OBJ files to Call of Duty map files.
 
+# Future updates
+A future update will fix flipped maps and inverted textures, possibly support for GTK Radiant
+
 # How To Use
 Open up exe, and put OBJ file on exe to convert to .MAP.
 
