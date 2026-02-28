@@ -1,5 +1,5 @@
 # ObjToCODMap 1.2
-A program that is designed to convert OBJ files to Call of Duty map files. Changes from ModdingDummies have been merged with this, including additional fixes such as custom scaling, original textures applies to surfaces, fixed inverted textures, some bug fixes, support for huge obj files, can split map files into muliple maps (to open in cod4 radiant etc)
+A program that is designed to convert OBJ files to Call of Duty map files. Changes from ModdingForDummies have been merged with this, including additional fixes such as custom scaling, original textures applies to surfaces, fixed inverted textures, some bug fixes, support for huge obj files, can split map files into muliple maps (to open in cod4 radiant etc)
 
 # Future updates
 I dont believe there will be any more updates, I have tested abilities to recreate brushes and parse back meshes together but due to how much data is lost during compiling, it seems impossible at this point.
