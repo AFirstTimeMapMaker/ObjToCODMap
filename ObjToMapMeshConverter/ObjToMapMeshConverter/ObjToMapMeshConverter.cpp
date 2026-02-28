@@ -1,539 +1,807 @@
-// ObjToMapMeshConverter.cpp : Defines the entry point for the console application.
-//
-#include <iostream>
-#include "stdafx.h"
-#include <conio.h>
 
+// PIPELINE:
+//  - Group triangles by shader
+//  - For each shader group:
+//      ALWAYS write 2x2 mesh patches (triangle soup)
+//
+// USER OPTION:
+//  - Surface mode:
+//      1 = Keep original shaders (requires MTL)
+//      2 = Force CAULK on all surfaces (skip MTL prompt)
+//
+// OUTPUT OPTION:
+//  - 1 = Single file
+//  - 2 = Split into N files (2 to 10)
+//
+// SCALE OPTION:
+//  - 1 = Divide by 2.54 (HUSKY export)
+//  - 2 = Keep original
+//  - 3 = Custom scale factor (multiplies output)
+
+#include "stdafx.h"
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
+#include <unordered_map>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <windows.h>
+#include <cfloat>
 
 using namespace std;
 
-int numinput = 0;
-
-struct TVector2
-{
-	float x = 0.0f;
-	float y = 0.0f;
-
-	TVector2() {}
-	TVector2(float x, float y) : x(x), y(y) {}
-
-	float& operator[](int i) { return (&x)[i]; }
-	float operator[](int i)const { return (&x)[i]; }
-};
-
-struct TVector3
-{
-	union
-	{
-		TVector2 xy;
-		struct
-		{
-			//Pitch
-			float x;
-			//Yaw
-			float y;
-			//Roll
-			float z;
-		};
-	};
-
-	TVector3() {}
-	TVector3(float x, float y, float z) : x(x), y(y), z(z) {}
-
-	float& operator[](int i) { return (&x)[i]; }
-	float operator[](int i)const { return (&x)[i]; }
-};
-
-struct TVector4
-{
-	union
-	{
-		TVector3 xyz;
-
-		struct
-		{
-			TVector2 xy;
-			TVector2 zw;
-		};
-
-		struct
-		{
-			//Pitch
-			float x;
-			//Yaw
-			float y;
-			//Roll
-			float z;
-			float w;
-		};
-	};
-
-	TVector4() {}
-	TVector4(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
-
-	float& operator[](int i) { return (&x)[i]; }
-	float operator[](int i)const { return (&x)[i]; }
-
-};
+struct TVector2 { float x = 0, y = 0; };
+struct TVector3 { float x = 0, y = 0, z = 0; };
 
 struct TSimple_Vertex
 {
-	TVector3 m_tPosition;
-	TVector2 m_tUV;
-	TVector3 m_tNormals;
+    TVector3 position;
+    TVector2 uv;
+    TVector3 normal;
+};
 
-	TSimple_Vertex() {}
-	TSimple_Vertex(float x, float y, float z) :
-		m_tPosition(x, y, z) {}
-	TSimple_Vertex(float x, float y, float z, float u, float v) :
-		m_tPosition(x, y, z), m_tUV(u, v) {}
-	TSimple_Vertex(float x, float y, float z, float u, float v, float nX, float nY, float nZ) :
-		m_tPosition(x, y, z), m_tUV(u, v), m_tNormals(nX, nY, nZ) {}
-
+struct Triangle
+{
+    size_t i0, i1, i2;
+    string shader;
 };
 
 struct tGeometry
 {
-	std::vector<TSimple_Vertex> m_tverts;
-	std::vector<unsigned int> m_indices;
+    vector<TSimple_Vertex> vertices;
+    vector<Triangle> tris;
 };
 
-struct TMY_TRIANGLE
+static int   scaleMode = 2;    // 1=/2.54, 2=keep, 3=custom
+static float customScale = 1.0f; // used if scaleMode==3
+static int   rotateXMode = 0;    // 0 none, 1 +90, 2 -90, 3 180
+
+// ============================================================
+// USER-SELECTED CAULK OVERRIDE
+// ============================================================
+static bool forceCaulkAll = false;
+
+// ============================================================
+// Robust input helpers
+// ============================================================
+
+static void clearLine()
 {
-	TVector3 indices = { -1.0f, -1.0f, -1.0f };
-
-	bool operator==(TMY_TRIANGLE rhs)
-	{
-		if (indices.x == rhs.indices.x && indices.y == rhs.indices.y && indices.z == rhs.indices.z)
-			return true;
-		return false;
-	}
-};
-
-void writeFileOut(int start, int end, tGeometry geometry, std::string input, int num)
-{
-
-	std::string stringNum = std::to_string(num);
-	for (int i = 0; i < stringNum.size(); i++)
-	{
-		input.push_back(stringNum[i]);
-	}
-	input.push_back('.');
-	input.push_back('M');
-	input.push_back('a');
-	input.push_back('p');
-
-	input.insert(input.begin(), 'd');
-	input.insert(input.begin() + 1, 'a');
-	input.insert(input.begin() + 2, 't');
-	input.insert(input.begin() + 3, 'a');
-	input.insert(input.begin() + 4, '/');
-	std::ofstream outFile(input.data());
-
-	//writing start
-	if (outFile.is_open(), std::ios::out);
-	{
-		outFile << "iwmap 4\n";
-		outFile << "// entity 0\n";
-		outFile << "{\n\n";
-		outFile << "\"classname\" \"worldspawn\"\n";
-
-		if (numinput == 1) // divide by 2.54
-		{
-			int index = 0;
-			//writing out verts
-			for (int i = start; i < end; i += 3)
-			{
-				outFile << "// brush " << index++ << "\n";
-				outFile << "{\n";
-				outFile << "mesh\n";
-				outFile << "{\n";
-				outFile << "caulk\n";
-				outFile << "lightmap_gray\n";
-				outFile << "2 2 16 8\n";
-				outFile << "(\n";
-				outFile << "v " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y) / 2.54 << " t 0 0 0 0\n";
-				outFile << "v " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y) / 2.54 << " t 0 0 0 0\n";
-				outFile << ")\n";
-				outFile << "(\n";
-				outFile << "v " << (geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.x) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.z) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.y) / 2.54 << " t 0 0 0 0\n";
-				outFile << "v " << (geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.x) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.z) / 2.54 << " " << (geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.y) / 2.54 << " t 0 0 0 0\n";
-				outFile << ")\n";
-				outFile << "}\n";
-				outFile << "}\n";
-			}
-
-			outFile << "}\n";
-
-		}
-
-	   if (numinput == 2) // keep original formal
-		{
-			int index = 0;
-			//writing out verts
-			for (int i = start; i < end; i += 3)
-			{
-				outFile << "// brush " << index++ << "\n";
-				outFile << "{\n";
-				outFile << "mesh\n";
-				outFile << "{\n";
-				outFile << "caulk\n";
-				outFile << "lightmap_gray\n";
-				outFile << "2 2 16 8\n";
-				outFile << "(\n";
-				outFile << "v " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y << " t 0 0 0 0\n";
-				outFile << "v " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i]].m_tPosition.y << " t 0 0 0 0\n";
-				outFile << ")\n";
-				outFile << "(\n";
-				outFile << "v " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i + 1]].m_tPosition.y << " t 0 0 0 0\n";
-				outFile << "v " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.x << " " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.z << " " << geometry.m_tverts[geometry.m_indices[i + 2]].m_tPosition.y << " t 0 0 0 0\n";
-				outFile << ")\n";
-				outFile << "}\n";
-				outFile << "}\n";
-			}
-
-			outFile << "}\n";
-
-		}
-		
-		outFile.close();
-	}
+    cin.clear();
+    cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
 }
 
+static int askIntInRange(const string& prompt, int minV, int maxV)
+{
+    while (true)
+    {
+        cout << prompt;
+        long long v;
+        if (cin >> v)
+        {
+            clearLine();
+            if (v >= minV && v <= maxV)
+                return (int)v;
+        }
+        else
+        {
+            clearLine();
+        }
 
+        cout << "Invalid input. Please enter a number from " << minV << " to " << maxV << ".\n";
+    }
+}
+
+static float askFloatInRange(const string& prompt, float minV, float maxV)
+{
+    while (true)
+    {
+        cout << prompt;
+        double v;
+        if (cin >> v)
+        {
+            clearLine();
+            if (v >= (double)minV && v <= (double)maxV)
+                return (float)v;
+        }
+        else
+        {
+            clearLine();
+        }
+
+        cout << "Invalid input. Please enter a number from " << minV << " to " << maxV << ".\n";
+    }
+}
+
+// ============================================================
+// Utility
+// ============================================================
+
+static string trim(const string& s)
+{
+    size_t a = s.find_first_not_of(" \t\r\n");
+    if (a == string::npos) return "";
+    size_t b = s.find_last_not_of(" \t\r\n");
+    return s.substr(a, b - a + 1);
+}
+
+static string toLowerCopy(string s)
+{
+    for (char& c : s) c = (char)tolower((unsigned char)c);
+    return s;
+}
+
+static bool endsWithNoCase(const string& s, const string& suffix)
+{
+    if (s.size() < suffix.size()) return false;
+    string a = toLowerCopy(s.substr(s.size() - suffix.size()));
+    string b = toLowerCopy(suffix);
+    return a == b;
+}
+
+static bool fileExistsAndNotDir(const string& path)
+{
+    DWORD attr = GetFileAttributesA(path.c_str());
+    if (attr == INVALID_FILE_ATTRIBUTES) return false;
+    if (attr & FILE_ATTRIBUTE_DIRECTORY) return false;
+    return true;
+}
+
+static string readDroppedPathLine()
+{
+    string s;
+    getline(cin, s);
+    s = trim(s);
+
+    // Handle empty line (common if a leftover newline is consumed)
+    while (s.empty() && !cin.fail())
+    {
+        // If user just hit enter, re-prompt via returning empty
+        return "";
+    }
+
+    if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+        s = s.substr(1, s.size() - 2);
+
+    return trim(s);
+}
+
+static string getStemNoFilesystem(const string& path)
+{
+    string name = path;
+    size_t slash = name.find_last_of("\\/");
+    if (slash != string::npos) name.erase(0, slash + 1);
+    size_t dot = name.find_last_of(".");
+    if (dot != string::npos) name.erase(dot);
+    return name;
+}
+
+static bool replaceFileAtomicA(const string& dst, const string& src)
+{
+    return MoveFileExA(src.c_str(), dst.c_str(),
+        MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED) != 0;
+}
+
+// Re-prompt until we get a valid dropped file of allowed extension(s)
+static string promptForDroppedFile(const string& prompt, const vector<string>& allowedExts)
+{
+    while (true)
+    {
+        cout << prompt;
+        string path = readDroppedPathLine();
+
+        if (path.empty())
+        {
+            cout << "No path detected. Please drag-and-drop the file into this window and press Enter.\n";
+            continue;
+        }
+
+        if (!fileExistsAndNotDir(path))
+        {
+            cout << "That file does not exist (or is a folder). Please drop a valid file.\n";
+            continue;
+        }
+
+        bool okExt = false;
+        for (const auto& ext : allowedExts)
+        {
+            if (endsWithNoCase(path, ext))
+            {
+                okExt = true;
+                break;
+            }
+        }
+
+        if (!okExt)
+        {
+            cout << "Unsupported file type. Expected: ";
+            for (size_t i = 0; i < allowedExts.size(); ++i)
+            {
+                cout << allowedExts[i];
+                if (i + 1 < allowedExts.size()) cout << ", ";
+            }
+            cout << "\n";
+            continue;
+        }
+
+        return path;
+    }
+}
+
+// ============================================================
+// map_Kd path -> shader name
+// ============================================================
+
+static string shaderFromMapKd(string path)
+{
+    path = trim(path);
+    for (char& c : path) if (c == '/') c = '\\';
+
+    size_t p = path.find_last_of('\\');
+    string file = (p == string::npos) ? path : path.substr(p + 1);
+
+    size_t dot = file.find_last_of('.');
+    string stem = (dot == string::npos) ? file : file.substr(0, dot);
+
+    auto dropSuffix = [&](const char* suf)
+        {
+            size_t n = strlen(suf);
+            if (stem.size() > n && stem.compare(stem.size() - n, n, suf) == 0)
+                stem.erase(stem.size() - n);
+        };
+
+    dropSuffix("_col");
+    dropSuffix("_diff");
+    dropSuffix("_dif");
+    dropSuffix("_albedo");
+    dropSuffix("_basecolor");
+    dropSuffix("_color");
+    dropSuffix("_d");
+
+    if (stem.empty()) stem = "caulk";
+    return stem;
+}
+
+// ============================================================
+// Parse .MTL: newmtl -> map_Kd -> shader
+// ============================================================
+
+static unordered_map<string, string> loadMtlToShader(const string& mtlPath)
+{
+    unordered_map<string, string> out;
+
+    ifstream f(mtlPath);
+    if (!f.is_open())
+        return out;
+
+    string line;
+    string current;
+
+    while (getline(f, line))
+    {
+        line = trim(line);
+        if (line.empty() || line[0] == '#')
+            continue;
+
+        stringstream ss(line);
+        string key;
+        ss >> key;
+
+        if (key == "newmtl")
+        {
+            ss >> current;
+        }
+        else if (key == "map_Kd")
+        {
+            string rest;
+            getline(ss, rest);
+            rest = trim(rest);
+
+            if (!current.empty() && !rest.empty())
+                out[current] = shaderFromMapKd(rest);
+        }
+    }
+    return out;
+}
+
+// ============================================================
+// Parse "v/vt/vn" token
+// ============================================================
+
+static bool parseFaceToken(const string& tok, long long& vi, long long& vti, long long& vni)
+{
+    vi = vti = vni = 0;
+    string a, b, c;
+    stringstream ss(tok);
+
+    getline(ss, a, '/');
+    getline(ss, b, '/');
+    getline(ss, c, '/');
+
+    if (a.empty()) return false;
+
+    // OBJ can have negative indices; this exporter ignores them for safety.
+    vi = stoll(a);
+    if (!b.empty()) vti = stoll(b);
+    if (!c.empty()) vni = stoll(c);
+
+    return true;
+}
+
+// ============================================================
+// OBJ Loader
+// If forceCaulkAll == true, we don't need MTL mapping.
+// We'll still parse usemtl but ignore it.
+// ============================================================
+
+static bool loadOBJ(const string& objPath,
+    const unordered_map<string, string>& mtlToShader,
+    tGeometry& geometry)
+{
+    ifstream file(objPath);
+    if (!file.is_open())
+        return false;
+
+    vector<TVector3> positions;
+    vector<TVector2> uvs;
+    vector<TVector3> normals;
+
+    string currentUseMtl;
+    string currentShader = "caulk";
+
+    string line;
+    while (getline(file, line))
+    {
+        if (line.empty()) continue;
+
+        stringstream ss(line);
+        string prefix;
+        ss >> prefix;
+
+        if (prefix == "usemtl")
+        {
+            ss >> currentUseMtl;
+
+            if (forceCaulkAll)
+            {
+                currentShader = "caulk";
+            }
+            else
+            {
+                auto it = mtlToShader.find(currentUseMtl);
+                currentShader = (it != mtlToShader.end()) ? it->second : "caulk";
+            }
+        }
+        else if (prefix == "v")
+        {
+            TVector3 v;
+            ss >> v.x >> v.y >> v.z;
+            positions.push_back(v);
+        }
+        else if (prefix == "vt")
+        {
+            TVector2 uv;
+            ss >> uv.x >> uv.y;
+            uvs.push_back(uv);
+        }
+        else if (prefix == "vn")
+        {
+            TVector3 n;
+            ss >> n.x >> n.y >> n.z;
+            normals.push_back(n);
+        }
+        else if (prefix == "f")
+        {
+            vector<size_t> faceVertIndices;
+            string tok;
+
+            while (ss >> tok)
+            {
+                long long vi, vti, vni;
+                if (!parseFaceToken(tok, vi, vti, vni))
+                    continue;
+
+                // Reject negative indices for safety (you can add support later if you want)
+                if (vi <= 0 || (size_t)vi > positions.size())
+                    continue;
+
+                TSimple_Vertex vtx;
+                vtx.position = positions[(size_t)vi - 1];
+
+                if (vti > 0 && (size_t)vti <= uvs.size())
+                    vtx.uv = uvs[(size_t)vti - 1];
+
+                if (vni > 0 && (size_t)vni <= normals.size())
+                    vtx.normal = normals[(size_t)vni - 1];
+
+                geometry.vertices.push_back(vtx);
+                faceVertIndices.push_back(geometry.vertices.size() - 1);
+            }
+
+            // Fan triangulation
+            if (faceVertIndices.size() >= 3)
+            {
+                for (size_t i = 1; i + 1 < faceVertIndices.size(); ++i)
+                {
+                    Triangle t;
+                    t.i0 = faceVertIndices[0];
+                    t.i1 = faceVertIndices[i];
+                    t.i2 = faceVertIndices[i + 1];
+                    t.shader = forceCaulkAll ? "caulk" : currentShader;
+                    geometry.tris.push_back(t);
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+// ============================================================
+// Rotation helpers
+// ============================================================
+
+static inline void applyRotateX(float& x, float& y, float& z)
+{
+    // +90: (x,y,z)->(x,-z, y)
+    // -90: (x,y,z)->(x, z,-y)
+    // 180:(x,y,z)->(x,-y,-z)
+    if (rotateXMode == 1)
+    {
+        float ny = -z;
+        float nz = y;
+        y = ny; z = nz;
+    }
+    else if (rotateXMode == 2)
+    {
+        float ny = z;
+        float nz = -y;
+        y = ny; z = nz;
+    }
+    else if (rotateXMode == 3)
+    {
+        y = -y;
+        z = -z;
+    }
+}
+
+// ============================================================
+// Coordinate conversion
+// Y-up OBJ -> Z-up MAP: (x, y, z) -> (x, z, -y) then rotateXMode then scale
+// ============================================================
+
+static inline float getScaleFactor()
+{
+    if (scaleMode == 1) return 1.0f / 2.54f; // divide by 2.54
+    if (scaleMode == 2) return 1.0f;         // keep
+    return customScale;                      // custom
+}
+
+static inline void toMapCoords(const TVector3& in, float& outX, float& outY, float& outZ)
+{
+    outX = in.x;
+    outY = in.z;
+    outZ = -in.y;
+
+    applyRotateX(outX, outY, outZ);
+
+    const float s = getScaleFactor();
+    outX *= s;
+    outY *= s;
+    outZ *= s;
+}
+
+// Transform normals with same mapping as positions (no scaling)
+static inline void transformNormal(const TVector3& nIn, float& nx, float& ny, float& nz)
+{
+    nx = nIn.x;
+    ny = nIn.z;
+    nz = -nIn.y;
+    applyRotateX(nx, ny, nz);
+}
+
+// vector helpers
+static inline void vecSub(const float a[3], const float b[3], float out[3])
+{
+    out[0] = a[0] - b[0];
+    out[1] = a[1] - b[1];
+    out[2] = a[2] - b[2];
+}
+
+static inline void crossProduct(const float a[3], const float b[3], float out[3])
+{
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+static inline float dot3(const float a[3], const float b[3])
+{
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+static inline float len3(const float a[3])
+{
+    return sqrtf(dot3(a, a));
+}
+
+static inline void normalize3(float a[3])
+{
+    float L = len3(a);
+    if (L > 1e-8f) { a[0] /= L; a[1] /= L; a[2] /= L; }
+}
+
+// ============================================================
+// Mesh writer: triangle soup (2x2 meshes) for an arbitrary list of tri IDs
+// Auto-winding correction using transformed normals.
+// ============================================================
+
+static void writeTriangleListAsMeshes(
+    const vector<size_t>& triIds,
+    const tGeometry& geometry,
+    ofstream& out,
+    size_t& brushIndex)
+{
+    for (size_t tid : triIds)
+    {
+        const Triangle& tri = geometry.tris[tid];
+
+        const auto& v0 = geometry.vertices[tri.i0];
+        const auto& v1 = geometry.vertices[tri.i1];
+        const auto& v2 = geometry.vertices[tri.i2];
+
+        float x1, y1, z1, x2, y2, z2, x3, y3, z3;
+        toMapCoords(v0.position, x1, y1, z1);
+        toMapCoords(v1.position, x2, y2, z2);
+        toMapCoords(v2.position, x3, y3, z3);
+
+        bool haveNormal = !(fabs(v0.normal.x) < 1e-8f && fabs(v0.normal.y) < 1e-8f && fabs(v0.normal.z) < 1e-8f
+            && fabs(v1.normal.x) < 1e-8f && fabs(v1.normal.y) < 1e-8f && fabs(v1.normal.z) < 1e-8f
+            && fabs(v2.normal.x) < 1e-8f && fabs(v2.normal.y) < 1e-8f && fabs(v2.normal.z) < 1e-8f);
+
+        float avgNx = 0, avgNy = 0, avgNz = 0;
+        if (haveNormal)
+        {
+            float tx, ty, tz;
+            transformNormal(v0.normal, tx, ty, tz);
+            avgNx += tx; avgNy += ty; avgNz += tz;
+            transformNormal(v1.normal, tx, ty, tz);
+            avgNx += tx; avgNy += ty; avgNz += tz;
+            transformNormal(v2.normal, tx, ty, tz);
+            avgNx += tx; avgNy += ty; avgNz += tz;
+
+            avgNx /= 3.0f; avgNy /= 3.0f; avgNz /= 3.0f;
+            float tmp[3] = { avgNx, avgNy, avgNz };
+            normalize3(tmp);
+            avgNx = tmp[0]; avgNy = tmp[1]; avgNz = tmp[2];
+        }
+
+        float p1[3] = { x1,y1,z1 };
+        float p2[3] = { x2,y2,z2 };
+        float p3[3] = { x3,y3,z3 };
+
+        float e1[3], e2[3], gN[3];
+        vecSub(p2, p1, e1);
+        vecSub(p3, p1, e2);
+        crossProduct(e1, e2, gN);
+        float gLen = len3(gN);
+        if (gLen > 1e-9f) { gN[0] /= gLen; gN[1] /= gLen; gN[2] /= gLen; }
+
+        if (haveNormal && gLen > 1e-9f)
+        {
+            float tN[3] = { avgNx, avgNy, avgNz };
+            float dp = dot3(tN, gN);
+            if (dp < 0.0f)
+            {
+                std::swap(x2, x3);
+                std::swap(y2, y3);
+                std::swap(z2, z3);
+            }
+        }
+
+        out << "// brush " << brushIndex++ << "\n";
+        out << "{\nmesh\n{\n";
+
+        const string outShader = forceCaulkAll ? "caulk" : tri.shader;
+        out << outShader << "\n";
+
+        out << "lightmap_gray\n";
+        out << "2 2 16 8\n";
+
+        out << "(\n";
+        out << "v " << x1 << " " << y1 << " " << z1 << " t 0 0 0 0\n";
+        out << "v " << x1 << " " << y1 << " " << z1 << " t 0 0 0 0\n";
+        out << ")\n";
+
+        out << "(\n";
+        out << "v " << x2 << " " << y2 << " " << z2 << " t 0 0 0 0\n";
+        out << "v " << x3 << " " << y3 << " " << z3 << " t 0 0 0 0\n";
+        out << ")\n";
+
+        out << "}\n}\n";
+    }
+}
+
+// ============================================================
+// Write MAP file (OBJ export) - MESH ONLY
+// ============================================================
+
+static void writeMapFile_OBJ(size_t startTri,
+    size_t endTri,
+    const tGeometry& geometry,
+    const string& baseName,
+    int partIndex)
+{
+    stringstream filename;
+    filename << "data\\" << baseName;
+    if (partIndex > 0)
+        filename << "_" << setw(2) << setfill('0') << partIndex;
+    filename << ".Map";
+
+    const string outPath = filename.str();
+    const string tmpPath = outPath + ".tmp";
+
+    unordered_map<string, vector<size_t>> trisByShader;
+    trisByShader.reserve(256);
+
+    for (size_t t = startTri; t < endTri; ++t)
+    {
+        const Triangle& tri = geometry.tris[t];
+        const string key = forceCaulkAll ? "caulk" : tri.shader;
+        trisByShader[key].push_back(t);
+    }
+
+    ofstream out(tmpPath);
+    if (!out.is_open())
+        return;
+
+    out << "iwmap 4\n";
+    out << "// entity 0\n";
+    out << "{\n\n";
+    out << "\"classname\" \"worldspawn\"\n";
+
+    size_t brushIndex = 0;
+
+    for (auto& kv : trisByShader)
+    {
+        vector<size_t>& triIds = kv.second;
+        writeTriangleListAsMeshes(triIds, geometry, out, brushIndex);
+    }
+
+    out << "}\n";
+    out.close();
+
+    replaceFileAtomicA(outPath, tmpPath);
+}
+
+// ============================================================
+// MAIN
+// ============================================================
 
 int main()
-
 {
-	std::cout << "OBJ TO COD MAP 1.02. 03/11/2019 release \n";
-	std::cout << "Press 1 to convert a Scobalula HUSKY Map Obj (divide 2.54, cm to COD units) or press 2 to convert w/o division. \n";
-	cin >> numinput;
-	
-	//error handling
-	while (numinput < 1 || numinput > 2) {
-		cin.clear();
-		cin.ignore(999, '\n');
-		cout << "Invalid! Please enter '1 or 2' \n";
-		cin >> numinput;
-	}
-	
-	cin.ignore();
-	std::cout << "Drag the obj file you want to convert and press enter.\n";
+    cout << "OBJ TO COD MAP 1.2\n";
+    cout << "RotateX + Auto-winding for mesh output\n\n";
 
-	std::string fileinput;
-			
-	std::getline(std::cin, fileinput);
+    // SCALE MODE (3 options). If custom, do not ask 1/2 follow-ups.
+    scaleMode = askIntInRange(
+        "Scale mode:\n"
+        "  1 = Divide by 2.54 (HUSKY export -> COD scale)\n"
+        "  2 = Keep original scale\n"
+        "  3 = Custom scale factor\n> ",
+        1, 3);
 
-	//input.erase(input.begin());
-	//input.erase(input.begin() + input.size() - 1);
+    if (scaleMode == 3)
+    {
+        // Reasonable guard range; adjust if you want.
+        customScale = askFloatInRange(
+            "\nEnter custom scale factor (Downscale down to 0.0001 or upscale up to 100).\n> ",
+            0.0001f, 100.0f);
+        cout << "Custom scale set to: " << customScale << "\n";
+    }
 
-	//Reading in
-	cout << "Working.....This will take a few minutes" << endl;
-	
-	std::ifstream objFile;
+    // SPLIT MODE: user picks 1 or 2, if 2 then ask 2..10
+    int splitMode = askIntInRange(
+        "\nOutput files:\n"
+        "  1 = Single .map file\n"
+        "  2 = Split into multiple files\n> ",
+        1, 2);
 
-	objFile.open(fileinput.data());
+    int splitCount = 1;
+    if (splitMode == 2)
+    {
+        splitCount = askIntInRange(
+            "\nHow many files do you want to split into? (pick between 2 up to 10 seperate files)\n> ",
+            2, 10);
+    }
 
-	tGeometry geometry;
+    rotateXMode = askIntInRange(
+        "\nRotate output about X axis:\n"
+        "  0 = none\n"
+        "  1 = +90 degrees (fixes Husky sideways output)\n"
+        "  2 = -90 degrees\n"
+        "  3 = 180 degrees\n> ",
+        0, 3);
 
-	if (objFile.is_open())
-	{
+    int caulkChoice = askIntInRange(
+        "\nSurface mode:\n"
+        "  1 = Keep original shaders (requires MTL)\n"
+        "  2 = Force CAULK on all surfaces (skip MTL)\n> ",
+        1, 2);
 
-		char checker;
+    forceCaulkAll = (caulkChoice == 2);
 
-		std::vector<TVector3> position;
-		std::vector<TVector2> texturePos;
-		std::vector<TVector3> normals;
-		std::vector<TMY_TRIANGLE> triangles;
+    unordered_map<string, string> mtlToShader;
 
-		while (objFile)
-		{
-			checker = objFile.get();
+    // If not autocaulk, prompt for MTL and validate file
+    if (!forceCaulkAll)
+    {
+        string mtlPath = promptForDroppedFile(
+            "\nDrag the MTL file and press Enter:\n> ",
+            { ".mtl" });
 
-			switch (checker)
-			{
-			case '#':
-				while (checker != '#')
-				{
-					checker = objFile.get();
-				}
-				break;
+        cout << "\nLoading MTL...\n";
+        mtlToShader = loadMtlToShader(mtlPath);
+        if (mtlToShader.empty())
+            cout << "Warning: No materials parsed from MTL. Using caulk for unknown materials.\n";
+    }
+    else
+    {
+        cout << "\nAutoCaulk enabled: skipping MTL prompt.\n";
+    }
 
-			case 'v':
-				checker = objFile.get();
-				if (checker == ' ')
-				{
-					float x, y, z;
-					objFile >> x >> y >> z;
+    // Prompt for OBJ (validate extension + existence)
+    string objPath = promptForDroppedFile(
+        "\nDrag the OBJ file and press Enter:\n> ",
+        { ".obj" });
 
-					TVector3 pushThis;
-					pushThis = { x, y, z };
-					position.push_back(pushThis);
-				}
-				else if (checker == 't')
-				{
-					float u, v;
-					objFile >> u >> v;
+    cout << "\nLoading OBJ...\n";
+    tGeometry geometry;
+    if (!loadOBJ(objPath, mtlToShader, geometry))
+    {
+        cout << "Failed to open OBJ file.\n";
+        system("pause");
+        return 1;
+    }
 
-					TVector2 pushThis;
-					pushThis = { u, v };
-					texturePos.push_back(pushThis);
-				}
-				else if (checker == 'n')
-				{
-					float x, y, z;
-					objFile >> x >> y >> z;
+    if (geometry.tris.empty() || geometry.vertices.empty())
+    {
+        cout << "OBJ loaded, but no usable geometry was found (0 tris or 0 verts).\n";
+        system("pause");
+        return 1;
+    }
 
-					TVector3 pushThis;
-					pushThis = { x, y, z };
-					normals.push_back(pushThis);
-				}
-				break;
+    cout << "Loaded " << geometry.vertices.size() << " vertices and "
+        << geometry.tris.size() << " triangles.\n";
 
-			case'f':
-				checker = objFile.get();
-				if (checker == ' ')
-				{
-					//std::string line;
-					//getline(objFile, line);
+    CreateDirectoryA("data", NULL);
 
-					/*unsigned int s1Index = 0;
-					unsigned int s2Index = 0;
-					for (unsigned int i = 0; i < line.size(); i++)
-					{
-					if (line[i] == ' ' && s1Index == 0)
-					s1Index = i;
-					else if (line[i] == ' ')
-					{
-					s2Index = i;
-					break;
-					}
-					}
-					std::string face1;
-					std::string face2;
-					std::string face3;
-					for (unsigned int i = 0; i < s1Index; i++)
-					{
-					face1.push_back(line[i]);
-					}
-					for (unsigned int i = s1Index; i < s2Index; i++)
-					{
-					face2.push_back(line[i]);
-					}
-					for (unsigned int i = s2Index; i < line.size(); i++)
-					{
-					face3.push_back(line[i]);
-					}
-					std::string value1;
-					std::string value2;
-					std::string value3;
-					s1Index = 0;
-					for (unsigned int i = 0; i < face1.size(); i++)
-					{
-					if (face1[i] == '/' && s1Index == 0)
-					s1Index = i;
-					else if (face1[i] == '/')
-					{
-					s2Index = i;
-					break;
-					}
-					}
-					for (unsigned int i = 0; i < s1Index; i++)
-					{
-					value1.push_back(face1[i]);
-					}
-					for (unsigned int i = s1Index + 1; i < s2Index; i++)
-					{
-					value2.push_back(face1[i]);
-					}
-					for (unsigned int i = s2Index + 1; i < face1.size(); i++)
-					{
-					value3.push_back(face1[i]);
-					}
-					float v1 = std::stof(value1.c_str());
-					float v2 = std::stof(value2.c_str());
-					float v3 = std::stof(value3.c_str());
-					TMY_TRIANGLE pushThis;
-					pushThis.indices = { v1, v2, v3 };
-					triangles.push_back(pushThis);
-					std::string value11;
-					std::string value12;
-					std::string value13;
-					s1Index = 0;
-					for (unsigned int i = 0; i < face2.size(); i++)
-					{
-					if (face2[i] == '/' && s1Index == 0)
-					s1Index = i;
-					else if (face2[i] == '/')
-					{
-					s2Index = i;
-					break;
-					}
-					}
-					for (unsigned int i = 0; i < s1Index; i++)
-					{
-					value11.push_back(face2[i]);
-					}
-					for (unsigned int i = s1Index + 1; i < s2Index; i++)
-					{
-					value12.push_back(face2[i]);
-					}
-					for (unsigned int i = s2Index + 1; i < face2.size(); i++)
-					{
-					value13.push_back(face2[i]);
-					}
-					float v11 = std::stof(value11.c_str());
-					float v12 = std::stof(value12.c_str());
-					float v13 = std::stof(value13.c_str());
-					TMY_TRIANGLE pushThis1;
-					pushThis1.indices = { v11, v12, v13 };
-					triangles.push_back(pushThis1);
-					std::string value21;
-					std::string value22;
-					std::string value23;
-					s1Index = 0;
-					for (unsigned int i = 0; i < face3.size(); i++)
-					{
-					if (face3[i] == '/' && s1Index == 0)
-					s1Index = i;
-					else if (face3[i] == '/')
-					{
-					s2Index = i;
-					break;
-					}
-					}
-					for (unsigned int i = 0; i < s1Index; i++)
-					{
-					value21.push_back(face3[i]);
-					}
-					for (unsigned int i = s1Index + 1; i < s2Index; i++)
-					{
-					value22.push_back(face3[i]);
-					}
-					for (unsigned int i = s2Index + 1; i < face3.size(); i++)
-					{
-					value23.push_back(face3[i]);
-					}
-					float v21 = std::stof(value21.c_str());
-					float v22 = std::stof(value22.c_str());
-					float v23 = std::stof(value23.c_str());
-					TMY_TRIANGLE pushThis2;
-					pushThis2.indices = { v21, v22, v23 };
-					triangles.push_back(pushThis2);*/
+    string baseName = getStemNoFilesystem(objPath);
+    size_t totalTris = geometry.tris.size();
 
-					TMY_TRIANGLE read1, read2, read3;
-					std::string::size_type sz;
-					int x, y, z;
-					objFile >> x >> y >> z;
-					read1.indices.x = x;
-					read2.indices.x = y;
-					read3.indices.x = z;
+    if (splitCount == 1)
+    {
+        writeMapFile_OBJ(0, totalTris, geometry, baseName, 0);
+    }
+    else
+    {
+        size_t chunk = (totalTris + (size_t)splitCount - 1) / (size_t)splitCount;
+        for (int part = 0; part < splitCount; ++part)
+        {
+            size_t start = (size_t)part * chunk;
+            size_t end = min(totalTris, start + chunk);
+            if (start >= end) break;
+            writeMapFile_OBJ(start, end, geometry, baseName, part + 1);
+        }
+    }
 
-					triangles.push_back(read1);
-					triangles.push_back(read2);
-					triangles.push_back(read3);
-
-				}
-				break;
-
-			default:
-				break;
-			}
-		}
-
-		//loading pos, uvs, normals and color
-		for (unsigned int i = 0; i < triangles.size(); i++)
-		{
-			TSimple_Vertex pushThis;
-
-			//assign position
-			pushThis.m_tPosition = position[triangles[i].indices.x - 1];
-
-			//assign uvs
-			if (texturePos.size() != 0)
-			{
-				pushThis.m_tUV.x = texturePos[triangles[i].indices.y - 1].x;
-				pushThis.m_tUV.y = 1 - texturePos[triangles[i].indices.y - 1].y;
-			}
-
-			//assign normals
-			if (normals.size() != 0)
-			{
-				unsigned int index = (triangles[i].indices.z - 1);
-				pushThis.m_tNormals = normals[index];
-
-			}
-			geometry.m_tverts.push_back(pushThis);
-		}
-
-		/*std::map<int, TMY_TRIANGLE> map;
-		for (int i = 0; i < triangles.size(); i++)
-		{
-		map[(triangles[i].indices.x + triangles[i].indices.y + triangles[i].indices.z) / 1000] = triangles[i];
-		}*/
-
-		//loading index
-		for (unsigned int i = 0; i < triangles.size(); i++)
-		{
-			bool match = false;
-			unsigned int matchIndex = 0;
-			for (unsigned int j = 0; j < geometry.m_indices.size(); j++)
-			{
-				if (triangles[i] == triangles[j] && i != j)
-				{
-					match = true;
-					matchIndex = j;
-					break;
-				}
-			}
-
-
-
-			if (match)
-			{
-				geometry.m_indices.push_back(matchIndex);
-			}
-			else
-				geometry.m_indices.push_back(i);
-		}
-
-	}
-
-	objFile.close();
-
-	HWND hwnd = GetConsoleWindow();
-
-
-	int del = fileinput.find_last_of("\\");
-
-	for (int i = 0; i < del + 1; i++)
-	{
-		fileinput.erase(fileinput.begin());
-	}
-
-	for (int i = 0; i < 4; i++)
-	{
-		fileinput.erase(fileinput.end() - 1);
-	}
-
-	//Writing out
-	CreateDirectory(L"data", NULL);
-
-	//350003
-	int num = 0;
-	//////////////////////////////////////////////////////////////////////////////////
-	for (int i = 0, max = 350003; i < geometry.m_indices.size(); i += 350003, max += 350003)
-	{
-		if (max > geometry.m_indices.size())
-		{
-			max = geometry.m_indices.size();
-		}
-		writeFileOut(i, max, geometry, fileinput, num);
-		num++;
-	}
-
-	cout << "Map has finished exporting, map is in the DATA folder! Press any key to close!" << endl;
-	_getch();
-
-	return 0;
+    cout << "\nExport complete.\n";
+    cout << "Files are in the DATA folder.\n";
+    system("pause");
+    return 0;
 }
